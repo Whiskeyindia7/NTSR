@@ -8,7 +8,7 @@ X<-as.matrix(X)
 
 # Constant 
 n.obs<-test.points$n;
-N.perm<-999;alpha<-0.05;radius<-0.30;
+N.perm<-999;alpha<-0.05;radius<-700;
 
 
 
