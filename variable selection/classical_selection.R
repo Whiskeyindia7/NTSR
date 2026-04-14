@@ -8,14 +8,6 @@ set.seed(123)
 library(spatstat);library(mvtnorm);library(ggplot2);library(geoR);library(mgcv);library(np)
 library(fields); library(classInt); library(nlme); library(convoSPAT)
 
-y
-Inf_x <- is.finite(y)
-y <- y[Inf_x]
-X <- X[Inf_x, , drop = FALSE]
-test.points <- test.points[Inf_x]  
-
-X<-as.matrix(X)
-
 
 ### backward ###
 iterative.test <- function(X, y, test.points, alpha = 0.05, nu = 2.5){
