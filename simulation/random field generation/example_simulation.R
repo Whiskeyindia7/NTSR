@@ -24,11 +24,6 @@ SE1.S.sig.tor<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs,
                                test.target=test.target, dcov.type=dcov.type, 
                                scenario=scenario, test.method=test.method)
 
-true.cor<-"E";test.target<-"sig";test.method<-"tor";scenario<-"SE1"
-SE1.E.sig.tor<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs, 
-                               test.statistic=test.statistic, true.cor=true.cor,
-                               test.target=test.target, dcov.type=dcov.type, 
-                               scenario=scenario, test.method=test.method)
 
 
 true.cor<-"L";test.target<-"pow";test.method<-"tor";scenario<-"SE1"
@@ -43,11 +38,6 @@ SE1.S.pow.tor<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs,
                                test.target=test.target, dcov.type=dcov.type, 
                                scenario=scenario, test.method=test.method)
 
-true.cor<-"E";test.target<-"pow";test.method<-"tor";scenario<-"SE1"
-SE1.E.pow.tor<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs, 
-                               test.statistic=test.statistic, true.cor=true.cor,
-                               test.target=test.target, dcov.type=dcov.type, 
-                               scenario=scenario, test.method=test.method)
 
 
 ## variance correction
@@ -63,11 +53,6 @@ SE1.S.sig.var<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs,
                                test.target=test.target, dcov.type=dcov.type, 
                                scenario=scenario, test.method=test.method)
 
-true.cor<-"E";test.target<-"sig";test.method<-"var";scenario<-"SE1"
-SE1.E.sig.var<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs, 
-                               test.statistic=test.statistic, true.cor=true.cor,
-                               test.target=test.target, dcov.type=dcov.type, 
-                               scenario=scenario, test.method=test.method)
 
 
 true.cor<-"L";test.target<-"pow";test.method<-"var";scenario<-"SE1"
@@ -82,17 +67,11 @@ SE1.S.pow.var<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs,
                                test.target=test.target, dcov.type=dcov.type, 
                                scenario=scenario, test.method=test.method)
 
-true.cor<-"E";test.target<-"pow";test.method<-"var";scenario<-"SE1"
-SE1.E.pow.var<-simulation.test(n.trial=n.trial, N.perm=N.perm, n.obs=n.obs, 
-                               test.statistic=test.statistic, true.cor=true.cor,
-                               test.target=test.target, dcov.type=dcov.type, 
-                               scenario=scenario, test.method=test.method)
 
-
-save(SE1.L.sig.tor,SE1.S.sig.tor,SE1.E.sig.tor,
-     SE1.L.pow.tor,SE1.S.pow.tor,SE1.E.pow.tor, 
+save(SE1.L.sig.tor,SE1.S.sig.tor,
+     SE1.L.pow.tor,SE1.S.pow.tor,
      file="SE1_tor2.RData")
 
-save(SE1.L.sig.var,SE1.S.sig.var,SE1.E.sig.var,
-     SE1.L.pow.var,SE1.S.pow.var,SE1.E.pow.var, 
+save(SE1.L.sig.var,SE1.S.sig.var,
+     SE1.L.pow.var,SE1.S.pow.var,
      file="SE1_var2.RData")
