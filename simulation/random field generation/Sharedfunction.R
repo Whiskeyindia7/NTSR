@@ -169,13 +169,13 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
     nlgamres<-nlgammod$residuals + as.vector(nlgam.pred[,"s(x,y)"])
     
     if(test.method=="tor"){
-
+      
       # test statistic
       if(test.statistic=="cov"){
         stat.lgam<-cov(lgamres, data$covariate2)
         stat.ks<-cov(ksres, data$covariate2)
         stat.nlgam<-cov(nlgamres, data$covariate2)
-      }else if(test.statistic=="cor"){
+      }else if(test.statistic=="tau"){
         stat.lgam<-cor(lgamres, data$covariate2, method="kendall")
         stat.ks<-cor(ksres, data$covariate2, method="kendall")
         stat.nlgam<-cor(nlgamres, data$covariate2, method="kendall")
@@ -193,8 +193,8 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
       simulated.lgam[1]<-stat.lgam
       simulated.ks[1]<-stat.ks
       simulated.nlgam[1]<-stat.nlgam
-
-
+      
+      
       for (k in 1:N.perm){
         test.points.shift <- rshift(test.points, edge="torus", radius=radius)
         cov.interest<-Z2[test.points.shift]
@@ -219,7 +219,7 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
         stat.lgam<-cov(lgamres, data$covariate2)
         stat.ks<-cov(ksres, data$covariate2)
         stat.nlgam<-cov(nlgamres, data$covariate2)
-      }else if(test.statistic=="cor"){
+      }else if(test.statistic=="tau"){
         stat.lgam<-cor(lgamres, data$covariate2, method="kendall")
         stat.ks<-cor(ksres, data$covariate2, method="kendall")
         stat.nlgam<-cor(nlgamres, data$covariate2, method="kendall")
@@ -239,7 +239,7 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
       simulated.nlgam[1]<-stat.nlgam
       n.simulated <- rep(NA, times=N.perm+1)
       n.simulated[1] <- test.points$n
-
+      
       # Random shifts
       for (k in 1:N.perm){
         jump <- runifdisc(1, radius=radius)
@@ -288,13 +288,13 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
         simulated.nlgam <- (simulated.nlgam - mean(simulated.nlgam))*sqrt(n.simulated)
       }
       
-
+      
     }
     
     ## p-value
     ## For linear GAM
     if(test.statistic=="dcov"){
-      pval.lgam<-sum(simulated.lgam >= stat.lgam) / (N.perm + 1)
+      pval.lgam<-sum(simulated.lgam >= simulated.lgam[1]) / (N.perm + 1)
     }
     else{
       test.rank <- rank(simulated.lgam)[1]
@@ -305,7 +305,7 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
     
     ## For Nadaraya-Watson estimator 
     if(test.statistic=="dcov"){
-      pval.ks<-sum(simulated.ks >= stat.ks) / (N.perm + 1)
+      pval.ks<-sum(simulated.ks >= simulated.ks[1]) / (N.perm + 1)
     }
     else{
       test.rank <- rank(simulated.ks)[1]
@@ -316,7 +316,7 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
     
     ## For nonlinear GAM
     if(test.statistic=="dcov"){
-      pval.nlgam<-sum(simulated.nlgam >= stat.nlgam) / (N.perm + 1)
+      pval.nlgam<-sum(simulated.nlgam >= simulated.nlgam[1]) / (N.perm + 1)
     }
     else{
       test.rank <- rank(simulated.nlgam)[1]
