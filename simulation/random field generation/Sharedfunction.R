@@ -1,3 +1,4 @@
+
 robust.gls<-function(formula, data, correlation, method="ML"){
   tryCatch(
     gls(formula, data=data, correlation=correlation, method=method),
@@ -45,9 +46,10 @@ T2<-function(x,y){
   return(1/t)
 }
 
-simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="cov", true.cor="L",
-                          window.bound=1, window=NULL, test.target="sig", dcov.type="V",
-                          scenario="SE1", test.method="var", radius=window.bound/2, alpha=0.05){
+simulation.test.variousK<-function(n.trial=2000, N.perm=c(99, 299, 499, 799, 999), n.obs=100, test.statistic="cov", true.cor="L",
+                                   window.bound=1, window=NULL, test.target="sig", scenario="SE1", 
+                                   test.method="var", radius=window.bound/2, alpha=0.05, seed=123,
+                                   max.shift.attempts=10000){
   #
   # INPUT DESCRIPTION
   # n.trial ... the number of repetition for whole test
@@ -56,15 +58,56 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
   # test.statistic ... the test statistic. "cov", "tau" and "dcov" can be used
   # true.cor ... true correlation structure between y and C. "L" is linear, "S" is squared and "E" means exponential 
   # window.bound ... the length of side of window. default is 1 (unit square). useless if window is specified.
-  # test.target ... power ("pow") of significance level ("sig")? default is significance test 
+  # test.target ... power ("pow") or signinficance level ("sig"). default is significance test 
   # window ... specified window. if you want to specify the observational window.
   # scenario ... scenario. SE1, NS, LN, N, E1, SE4 can be used
   # test.method ... variance correction ("var") and torrus correction ("tor")
   # radius ... radius for shift vector
+  # seed ... seed number for set.seed()
+  # max.shift.attempts ... maximum number of attempts used to obtain a shift
+  #                        with at least two retained observations
   #
-  lgam.rej<-ks.rej<-nlgam.rej<-0
-  lgam.p<-ks.p<-nlgam.p<-c()
-  num<-1
+  N.perm.compare <- N.perm
+  N.perm <- max(N.perm.compare)
+  n.K <- length(N.perm.compare)
+
+  if(!is.numeric(max.shift.attempts) || length(max.shift.attempts) != 1L ||
+     !is.finite(max.shift.attempts) || max.shift.attempts < 1){
+    stop("`max.shift.attempts` must be a positive finite number.")
+  }
+  max.shift.attempts <- as.integer(max.shift.attempts)
+  
+  if(test.statistic=="dcov"){
+    lgam.rej<-ks.rej<-nlgam.rej<-rep(0,n.K)
+    lgam.p<-ks.p<-nlgam.p<-matrix(NA,nrow=n.trial,ncol=n.K)
+    
+    colnames(lgam.p)<-N.perm.compare
+    colnames(ks.p)<-N.perm.compare
+    colnames(nlgam.p)<-N.perm.compare
+    
+    names(lgam.rej)<-N.perm.compare
+    names(ks.rej)<-N.perm.compare
+    names(nlgam.rej)<-N.perm.compare
+  }else{
+    lgam.rej.uncentered<-ks.rej.uncentered<-nlgam.rej.uncentered<-rep(0,n.K)
+    lgam.p.uncentered<-ks.p.uncentered<-nlgam.p.uncentered<-matrix(NA,nrow=n.trial,ncol=n.K)
+
+    colnames(lgam.p.uncentered)<-N.perm.compare
+    colnames(ks.p.uncentered)<-N.perm.compare
+    colnames(nlgam.p.uncentered)<-N.perm.compare
+
+    names(lgam.rej.uncentered)<-N.perm.compare
+    names(ks.rej.uncentered)<-N.perm.compare
+    names(nlgam.rej.uncentered)<-N.perm.compare
+  }
+  
+  simulated.lgam.list <- vector("list", n.trial)
+  simulated.ks.list <- vector("list", n.trial)
+  simulated.nlgam.list <- vector("list", n.trial)
+  n.simulated.list <- vector("list", n.trial)
+  
+  set.seed(seed)
+  
   for(i in 1:n.trial){
     #
     # DATA DESCRIPTION
@@ -76,20 +119,21 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
     #                 here represented as a pixel image
     # y .... observational data, available only at test.points
     #
+    
     if(is.null(window)){
       window <- owin(c(0,window.bound),c(0,window.bound))
-      test.points <- runifpoint(n.obs, win=window)   ## Observed locations
     }else{window<-window}
+    
+    test.points <- runifpoint(n.obs, win=window)   ## Observed locations
+    
     
     auxA <- attr(rLGCP("exp", mu=0, var=1, scale=0.2, saveLambda=TRUE, win=window),"Lambda") # Covariate 
     auxB <- attr(rLGCP("exp", mu=0, var=1, scale=0.2, saveLambda=TRUE, win=window),"Lambda") # Covariate 
     Z1 <- eval.im(log(auxA))
     Z2 <- eval.im(log(auxB))
     rm(auxA);rm(auxB);
-    
-    
     ## Observed covariates
-    C1 <- Z1[test.points]; C2 <- Z2[test.points]; 
+    C1 <- Z1[test.points]; C2 <- Z2[test.points];
     
     ## Now, construct observed data y
     loc<-cbind(test.points$x,test.points$y)
@@ -123,8 +167,18 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
       Z3 <- eval.im(log(auxC))
       W <- Z3[test.points];rm(auxC)
     }
+    else if(scenario=="SD"){
+      Sigma.SD <- exp(-(d / 0.4)^2)
+      W <- as.numeric(mvtnorm::rmvnorm(n=1, mean=rep(0, n.obs), sigma=Sigma.SD))
+    }
+    else if(scenario=="HT"){
+      df<-3
+      Sigma.SE1 <- exp(-(d / 0.2)^2)
+      Sigma.t <- (df - 2) / df * Sigma.SE1
+      W <- as.numeric(mvtnorm::rmvt(n=1, sigma=Sigma.t, df=df, delta=rep(0,n.obs)))
+    }
     else if(scenario=="SE4"){
-      auxC <- attr(rLGCP("exp", mu=0, var=4, scale=0.2, saveLambda=TRUE, win=window),"Lambda") # Random effect 
+      auxC <- attr(rLGCP("gau", mu=0, var=4, scale=0.2, saveLambda=TRUE, win=window),"Lambda") # Random effect 
       Z3 <- eval.im(log(auxC))
       W <- Z3[test.points];rm(auxC)
     }else{stop("Unknown value for scenario :", scenario)}
@@ -159,7 +213,7 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
     #####################
     
     ## Method: NW-estimation for mean trend
-    bws<-npregbw(response ~ covariate1, data=data, regtype="lc", ckertype="epanechnikov")
+    bws<-npregbw(response ~ covariate1, data=data, regtype="lc", ckertype="epanechnikov", verbose = F)
     ksfit<-npreg(bws, residuals=T)
     ksres<-ksfit$resid
     
@@ -172,17 +226,17 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
       
       # test statistic
       if(test.statistic=="cov"){
-        stat.lgam<-cov(lgamres, data$covariate2)
-        stat.ks<-cov(ksres, data$covariate2)
-        stat.nlgam<-cov(nlgamres, data$covariate2)
+        stat.lgam<-cov(lgamres, C2)
+        stat.ks<-cov(ksres, C2)
+        stat.nlgam<-cov(nlgamres, C2)
       }else if(test.statistic=="tau"){
-        stat.lgam<-cor(lgamres, data$covariate2, method="kendall")
-        stat.ks<-cor(ksres, data$covariate2, method="kendall")
-        stat.nlgam<-cor(nlgamres, data$covariate2, method="kendall")
+        stat.lgam<-cor(lgamres, C2, method="kendall")
+        stat.ks<-cor(ksres, C2, method="kendall")
+        stat.nlgam<-cor(nlgamres, C2, method="kendall")
       }else if(test.statistic=="dcov"){
-        stat.lgam<-dcov(lgamres, data$covariate2, type=dcov.type)*n.obs*T2(lgamres, data$covariate2)
-        stat.ks<-dcov(ksres, data$covariate2, type=dcov.type)*n.obs*T2(ksres, data$covariate2)
-        stat.nlgam<-dcov(nlgamres, data$covariate2, type=dcov.type)*n.obs*T2(nlgamres, data$covariate2)
+        stat.lgam<-dcov(lgamres, C2, type="V")*n.obs*T2(lgamres, C2)
+        stat.ks<-dcov(ksres, C2, type="V")*n.obs*T2(ksres, C2)
+        stat.nlgam<-dcov(nlgamres, C2, type="V")*n.obs*T2(nlgamres, C2)
       }
       
       
@@ -203,30 +257,30 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
           simulated.ks[k+1] <- cov(cov.interest,ksres)
           simulated.nlgam[k+1] <- cov(cov.interest,nlgamres)
         }else if(test.statistic=="tau"){
-          simulated.lgam[k+1] <- cor(cov.interest,lgamres,method="kendall")
-          simulated.ks[k+1] <- cor(cov.interest,ksres,method="kendall")
-          simulated.nlgam[k+1] <- cor(cov.interest,nlgamres,method="kendall")
+          simulated.lgam[k+1] <- cor(cov.interest, lgamres,method="kendall")
+          simulated.ks[k+1] <- cor(cov.interest, ksres,method="kendall")
+          simulated.nlgam[k+1] <- cor(cov.interest, nlgamres,method="kendall")
         }else if(test.statistic=="dcov"){
-          simulated.lgam[k+1] <- dcov(cov.interest,lgamres,type=dcov.type)*n.obs*T2(lgamres, cov.interest)
-          simulated.ks[k+1] <- dcov(cov.interest,ksres,type=dcov.type)*n.obs*T2(ksres, cov.interest)
-          simulated.nlgam[k+1] <- dcov(cov.interest,nlgamres,type=dcov.type)*n.obs*T2(nlgamres, cov.interest)
+          simulated.lgam[k+1]<-dcov(lgamres, cov.interest, type="V")*n.obs*T2(lgamres, cov.interest)
+          simulated.ks[k+1]<-dcov(ksres, cov.interest, type="V")*n.obs*T2(ksres, cov.interest)
+          simulated.nlgam[k+1]<-dcov(nlgamres, cov.interest, type="V")*n.obs*T2(nlgamres, cov.interest)
         }
       }
       
     }else if(test.method=="var"){
-      # test statistic
+      
       if(test.statistic=="cov"){
-        stat.lgam<-cov(lgamres, data$covariate2)
-        stat.ks<-cov(ksres, data$covariate2)
-        stat.nlgam<-cov(nlgamres, data$covariate2)
+        stat.lgam<-cov(lgamres, C2)
+        stat.ks<-cov(ksres, C2)
+        stat.nlgam<-cov(nlgamres, C2)
       }else if(test.statistic=="tau"){
-        stat.lgam<-cor(lgamres, data$covariate2, method="kendall")
-        stat.ks<-cor(ksres, data$covariate2, method="kendall")
-        stat.nlgam<-cor(nlgamres, data$covariate2, method="kendall")
+        stat.lgam<-cor(lgamres, C2, method="kendall")
+        stat.ks<-cor(ksres, C2, method="kendall")
+        stat.nlgam<-cor(nlgamres, C2, method="kendall")
       }else if(test.statistic=="dcov"){
-        stat.lgam<-dcov(lgamres, data$covariate2, type=dcov.type)*T2(lgamres, data$covariate2)
-        stat.ks<-dcov(ksres, data$covariate2, type=dcov.type)*T2(ksres, data$covariate2)
-        stat.nlgam<-dcov(nlgamres, data$covariate2, type=dcov.type)*T2(nlgamres, data$covariate2)
+        stat.lgam<-dcov(lgamres, C2, type="V")*T2(lgamres, C2)
+        stat.ks<-dcov(ksres, C2, type="V")*T2(ksres, C2)
+        stat.nlgam<-dcov(nlgamres, C2, type="V")*T2(nlgamres, C2)
       }
       
       
@@ -242,10 +296,29 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
       
       # Random shifts
       for (k in 1:N.perm){
-        jump <- runifdisc(1, radius=radius)
-        test.points.shifted <- shift(test.points, c(jump$x,jump$y))
-        W.reduced <- intersect.owin(test.points$window, test.points.shifted$window)
-        test.points.reduced <- test.points[W.reduced]
+        shift.attempt <- 0L
+
+        repeat {
+          shift.attempt <- shift.attempt + 1L
+          jump <- runifdisc(1, radius=radius)
+          test.points.shifted <- shift(test.points, c(jump$x,jump$y))
+          W.reduced <- intersect.owin(test.points$window, test.points.shifted$window)
+          test.points.reduced <- test.points[W.reduced]
+
+          # cov(), Kendall's tau, and the normalized dCov statistic require
+          # at least two retained observations. Invalid shifts are discarded.
+          if(test.points.reduced$n >= 2L){
+            break
+          }
+
+          if(shift.attempt >= max.shift.attempts){
+            stop(sprintf(
+              "Failed to obtain at least two retained observations for shift %d after %d attempts.",
+              k, max.shift.attempts
+            ))
+          }
+        }
+
         test.points.reduced.backshifted <- shift(test.points.reduced, c(-jump$x,-jump$y))
         
         all.points <- cbind(test.points$x, test.points$y)
@@ -256,86 +329,127 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
         ksres.reduced<-ksres[reduced.indices]
         nlgamres.reduced<-nlgamres[reduced.indices]
         
-        vals2 <- Z2[test.points.reduced.backshifted]
+        cov.interest<-Z2[test.points.reduced.backshifted]
         
         if(test.statistic=="cov"){
-          simulated.lgam[k+1] <- cov(lgamres.reduced, vals2)
-          simulated.ks[k+1] <- cov(ksres.reduced, vals2)
-          simulated.nlgam[k+1] <- cov(nlgamres.reduced, vals2)
+          simulated.lgam[k+1] <- cov(lgamres.reduced, cov.interest)
+          simulated.ks[k+1] <- cov(ksres.reduced, cov.interest)
+          simulated.nlgam[k+1] <- cov(nlgamres.reduced, cov.interest)
           n.simulated[k+1] <- test.points.reduced$n
         }else if(test.statistic=="tau"){
-          simulated.lgam[k+1] <- cor(lgamres.reduced, vals2, method="kendall")
-          simulated.ks[k+1] <- cor(ksres.reduced, vals2, method="kendall")
-          simulated.nlgam[k+1] <- cor(nlgamres.reduced, vals2, method="kendall")
+          simulated.lgam[k+1] <- cor(lgamres.reduced, cov.interest, method="kendall")
+          simulated.ks[k+1] <- cor(ksres.reduced, cov.interest, method="kendall")
+          simulated.nlgam[k+1] <- cor(nlgamres.reduced, cov.interest, method="kendall")
           n.simulated[k+1] <- test.points.reduced$n
         }else if(test.statistic=="dcov"){
-          simulated.lgam[k+1] <- dcov(lgamres.reduced, vals2, type=dcov.type)*T2(lgamres.reduced, vals2)
-          simulated.ks[k+1] <- dcov(ksres.reduced, vals2, type=dcov.type)*T2(ksres.reduced, vals2)
-          simulated.nlgam[k+1] <- dcov(nlgamres.reduced, vals2, type=dcov.type)*T2(nlgamres.reduced, vals2)
+          simulated.lgam[k+1] <- dcov(lgamres.reduced, cov.interest, type="V")*T2(lgamres.reduced, cov.interest)
+          simulated.ks[k+1] <- dcov(ksres.reduced, cov.interest, type="V")*T2(ksres.reduced, cov.interest)
+          simulated.nlgam[k+1] <- dcov(nlgamres.reduced, cov.interest, type="V")*T2(nlgamres.reduced, cov.interest)
           n.simulated[k+1] <- test.points.reduced$n
         }
       }
       
-      # Variance correction with asymptotic variance
-      if(test.statistic=="dcov"){
-        simulated.lgam <- (simulated.lgam)*(n.simulated)
-        simulated.ks <- (simulated.ks)*(n.simulated)
-        simulated.nlgam <- (simulated.nlgam)*(n.simulated)
-      }
-      else{
-        simulated.lgam <- (simulated.lgam)*sqrt(n.simulated)
-        simulated.ks <- (simulated.ks)*sqrt(n.simulated)
-        simulated.nlgam <- (simulated.nlgam)*sqrt(n.simulated)
-      }
+      # Save raw test statistics
+      simulated.lgam.list[[i]] <- simulated.lgam
+      simulated.ks.list[[i]] <- simulated.ks
+      simulated.nlgam.list[[i]] <- simulated.nlgam
+      n.simulated.list[[i]] <- n.simulated
       
-      
+      # Variance correction for different numbers of random shifts
+      for(j in 1:n.K){
+        
+        current.index <- 1:(N.perm.compare[j]+1)
+        current.M <- N.perm.compare[j]+1
+        current.n <- n.simulated[current.index]
+        
+        current.lgam <- simulated.lgam[current.index]
+        current.ks <- simulated.ks[current.index]
+        current.nlgam <- simulated.nlgam[current.index]
+        if(test.statistic=="dcov"){
+          normalized.lgam <-current.lgam*current.n
+          normalized.ks <-current.ks*current.n
+          normalized.nlgam <-current.nlgam*current.n
+          
+          ## Upper-tail p-values
+          pval.lgam<-sum(normalized.lgam>=normalized.lgam[1])/current.M
+          pval.ks<-sum(normalized.ks>=normalized.ks[1])/current.M
+          pval.nlgam <-sum(normalized.nlgam>=normalized.nlgam[1])/current.M
+          
+          lgam.p[i,j] <- pval.lgam
+          ks.p[i,j] <- pval.ks
+          nlgam.p[i,j] <- pval.nlgam
+          
+          if(pval.lgam<=alpha){lgam.rej[j] <- lgam.rej[j]+1}
+          if(pval.ks<=alpha){ks.rej[j] <- ks.rej[j]+1}
+          if(pval.nlgam<=alpha){nlgam.rej[j] <- nlgam.rej[j]+1}
+        }else{
+          uncentered.lgam <-current.lgam*sqrt(current.n)
+          uncentered.ks <-current.ks*sqrt(current.n)
+          uncentered.nlgam <-current.nlgam*sqrt(current.n)
+
+          ## p-values for uncentered statistics
+          test.rank <- rank(uncentered.lgam)[1]
+          pval.lgam.uncentered <- min(1,2*min(test.rank,current.M-test.rank+1)/current.M)
+          
+          test.rank <- rank(uncentered.ks)[1]
+          pval.ks.uncentered <- min(1, 2*min(test.rank,current.M-test.rank+1)/current.M)
+          
+          test.rank <- rank(uncentered.nlgam)[1]
+          pval.nlgam.uncentered <- min(1, 2*min(test.rank,current.M-test.rank+1)/current.M)
+          
+          lgam.p.uncentered[i,j] <-pval.lgam.uncentered
+          ks.p.uncentered[i,j] <- pval.ks.uncentered
+          nlgam.p.uncentered[i,j] <- pval.nlgam.uncentered
+          
+          if(pval.lgam.uncentered<=alpha){lgam.rej.uncentered[j] <-lgam.rej.uncentered[j]+1}
+          if(pval.ks.uncentered<=alpha){ks.rej.uncentered[j] <- ks.rej.uncentered[j]+1}
+          if(pval.nlgam.uncentered<=alpha){nlgam.rej.uncentered[j] <- nlgam.rej.uncentered[j]+1}
+        }
+      }
     }
-    
-    ## p-value
-    ## For linear GAM
-    if(test.statistic=="dcov"){
-      pval.lgam<-sum(simulated.lgam >= simulated.lgam[1]) / (N.perm + 1)
-    }
-    else{
-      test.rank <- rank(simulated.lgam)[1]
-      pval.lgam<- 2*min(test.rank, N.perm+1-test.rank)/(N.perm+1)
-    }
-    lgam.p[i]<-pval.lgam
-    if(pval.lgam < alpha){lgam.rej <- lgam.rej+1}
-    
-    ## For Nadaraya-Watson estimator 
-    if(test.statistic=="dcov"){
-      pval.ks<-sum(simulated.ks >= simulated.ks[1]) / (N.perm + 1)
-    }
-    else{
-      test.rank <- rank(simulated.ks)[1]
-      pval.ks<- 2*min(test.rank, N.perm+1-test.rank)/(N.perm+1)
-    }
-    ks.p[i]<-pval.ks
-    if(pval.ks < alpha){ks.rej <- ks.rej+1}
-    
-    ## For nonlinear GAM
-    if(test.statistic=="dcov"){
-      pval.nlgam<-sum(simulated.nlgam >= simulated.nlgam[1]) / (N.perm + 1)
-    }
-    else{
-      test.rank <- rank(simulated.nlgam)[1]
-      pval.nlgam<- 2*min(test.rank, N.perm+1-test.rank)/(N.perm+1)
-    }
-    nlgam.p[i]<-pval.nlgam
-    if(pval.nlgam < alpha){nlgam.rej <- nlgam.rej+1}
-    num<-num+1
   }
-  lgam.rej<-lgam.rej/n.trial
-  ks.rej<-ks.rej/n.trial
-  nlgam.rej<-nlgam.rej/n.trial
-  
-  result<-list(lgam.rej=lgam.rej,
-               ks.rej=ks.rej,
-               nlgam.rej=nlgam.rej,
-               lgam.p=lgam.p,
-               ks.p=ks.p,
-               nlgam.p=nlgam.p)
+  ## Return results ##
+  if(test.statistic=="dcov"){
+    lgam.rej <- lgam.rej/n.trial
+    ks.rej <- ks.rej/n.trial
+    nlgam.rej <- nlgam.rej/n.trial
+    
+    result <- list(
+      N.perm=N.perm.compare,
+      lgam.rej=lgam.rej,
+      ks.rej=ks.rej,
+      nlgam.rej=nlgam.rej,
+      lgam.p=lgam.p,
+      ks.p=ks.p,
+      nlgam.p=nlgam.p,
+      simulated.lgam=simulated.lgam.list,
+      simulated.ks=simulated.ks.list,
+      simulated.nlgam=simulated.nlgam.list,
+      n.simulated=n.simulated.list
+    )
+    
+  }else{
+    lgam.rej.uncentered <- lgam.rej.uncentered/n.trial
+    ks.rej.uncentered <- ks.rej.uncentered/n.trial
+    nlgam.rej.uncentered <- nlgam.rej.uncentered/n.trial
+    
+    result <- list(
+      N.perm=N.perm.compare,
+
+      lgam.rej.uncentered=lgam.rej.uncentered,
+      ks.rej.uncentered=ks.rej.uncentered,
+      nlgam.rej.uncentered=nlgam.rej.uncentered,
+
+      lgam.p.uncentered=lgam.p.uncentered,
+      ks.p.uncentered=ks.p.uncentered,
+      nlgam.p.uncentered=nlgam.p.uncentered,
+      
+      simulated.lgam=simulated.lgam.list,
+      simulated.ks=simulated.ks.list,
+      simulated.nlgam=simulated.nlgam.list,
+      n.simulated=n.simulated.list
+    )
+  }
   
   return(result)
 }
