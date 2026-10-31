@@ -1,9 +1,9 @@
 rm(list=ls())
-setwd('/Users/kanghyunwi/Desktop/revised_rs2')
+setwd('revised_rs2')
 source('iterative_rs.R')
 #set.seed(1234)
 n.seed<-1234
-load("/Users/kanghyunwi/Downloads/Chlorophyll2.RData")
+load("Chlorophyll2.RData")
 X<-as.matrix(X)
 
 # Constant 
