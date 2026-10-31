@@ -283,9 +283,9 @@ simulation.test<-function(n.trial=2000, N.perm=499, n.obs=100, test.statistic="c
         simulated.nlgam <- (simulated.nlgam)*(n.simulated)
       }
       else{
-        simulated.lgam <- (simulated.lgam - mean(simulated.lgam))*sqrt(n.simulated)
-        simulated.ks <- (simulated.ks - mean(simulated.ks))*sqrt(n.simulated)
-        simulated.nlgam <- (simulated.nlgam - mean(simulated.nlgam))*sqrt(n.simulated)
+        simulated.lgam <- (simulated.lgam)*sqrt(n.simulated)
+        simulated.ks <- (simulated.ks)*sqrt(n.simulated)
+        simulated.nlgam <- (simulated.nlgam)*sqrt(n.simulated)
       }
       
       
